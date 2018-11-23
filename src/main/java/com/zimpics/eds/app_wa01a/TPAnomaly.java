@@ -27,32 +27,17 @@ public class TPAnomaly {
     }
 
     //GETTERS AND SETTERS
-    public String getAnFName() {
-        return anFName;
-    }
 
-   public void setAnFName(String newValue) {
+    public void setAnFName(String newValue) {
         this.anFName = newValue;
-    }
-
-    public int getAnLineNo() {
-        return anLineNo;
     }
 
     public void setAnLineNo(int newValue) {
         this.anLineNo = newValue;
     }
 
-    public int getAnColNo() {
-        return anColNo;
-    }
-
     public void setAnColNo(int newValue) {
         this.anColNo = newValue;
-    }
-
-    public String getAnAttrib() {
-        return anAttrib;
     }
 
     public void setAnAttrib(String newValue) {
@@ -65,10 +50,6 @@ public class TPAnomaly {
 
     public void setAnErrCode(String newValue) {
         this.anErrCode = newValue;
-    }
-
-    public String getAnDescr() {
-        return anDescr;
     }
 
     public void setAnDescr(String newValue) {
@@ -136,30 +117,16 @@ public class TPAnomaly {
     @Override
     public String toString() {
         String str = " ";
-      //  str +=  "  " + anFName;
+        //  str +=  "  " + anFName;
         str += anAccept;
         str += anLineNo;
-      //  str += " | " + anColNo;
-      //  str += " | " + anAttrib;
+        //  str += " | " + anColNo;
+        //  str += " | " + anAttrib;
         str += " | " + anErrCode;
         str += " | " + anDescr;
         str += " ";
         return str;
     }
-/*
-        final StringBuilder formatted = new StringBuilder();
-        //  formatted.append("  ").append(anFName).append(" ");
-
-        formatted.append("  ").append(anAccept);
-        formatted.append("  ").append(anLineNo);
-        // formatted.append(" | ").append(anColNo);
-        // formatted.append(" | ").append(anAttrib);
-        formatted.append(" | ").append(anErrCode);
-        formatted.append(" | ").append(anDescr).append("  ");
-        return formatted.toString();
-    }
-*/
-
 
     private boolean chkAnomalyPersists() throws SQLException {
         final String sql = "SELECT * FROM tblAnomalies " +

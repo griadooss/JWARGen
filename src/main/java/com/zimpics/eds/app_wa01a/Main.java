@@ -7,9 +7,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,6 +19,7 @@
  */
 package com.zimpics.eds.app_wa01a;
 
+import com.zimpics.eds.app_wa01a.GUI.Application;
 import com.zimpics.eds.app_wa01a.helpers.DbHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,16 +33,18 @@ class Main {
     public static void main(final String[] args) {
         DbHelper.getInstance().init();
         DbHelper.getInstance().registerShutdownHook();
+        WAClient.init();
 
         SwingUtilities.invokeLater(() -> {
             Main.LOGGER.debug("Starting application");
 
             final Application app = new Application();
             app.setTitle("Wentworth Advantage Report Generator");
-            app.setSize(900, 400);
+            app.setSize(800, 400);
             app.setLocationRelativeTo(null);
             app.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             app.setVisible(true);
+
 
             // app.addWindowListener(new WindowAdapter() {
             // @Override
@@ -52,7 +55,7 @@ class Main {
             // });
         });
     }
-  //  private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
+    //  private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
 }
 
 

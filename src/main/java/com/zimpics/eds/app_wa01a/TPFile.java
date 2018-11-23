@@ -40,7 +40,7 @@ public class TPFile {
     private boolean fPersists;
 
 
-    //public getters and setters
+    //public GETTERS and SETTERS
     public String getfName() {
         return fName;
     }
@@ -48,8 +48,6 @@ public class TPFile {
     public void setfName(String newValue) throws SQLException {
         this.fName = newValue;
         fPersists = chkFilePersists(fName);
-
-
     }
 
     public String getDtProcessed() {
@@ -118,6 +116,14 @@ public class TPFile {
         }
     }
 
+    public void resetFields() {
+        //Dont reset fTimesRun
+        setEnquiries(0);
+        setCalls(0);
+        setfStatus("Queued");
+        setDtProcessed("");
+    }
+
     private boolean chkFilePersists(String file) throws SQLException {
         final String sql = "SELECT * FROM tblFile WHERE file_name = " + "'" + file + "'";
         try (Connection connection = DbHelper.getConnection();
@@ -126,8 +132,9 @@ public class TPFile {
             return rs.next();
         }
     }
-   public boolean chkIsInitalLoad(String file) throws SQLException {
-        final String sql = "SELECT * FROM tblFile WHERE " + "'" + file + "'" + "AND times_run = 0";
+
+    public boolean chkIsInitalLoad(String file) throws SQLException {
+        final String sql = "SELECT * FROM tblFile WHERE file_name = " + "'" + file + "'" + "AND times_run = 0";
         try (Connection connection = DbHelper.getConnection();
              PreparedStatement psmt = connection.prepareStatement(sql);
              ResultSet rs = psmt.executeQuery()) {

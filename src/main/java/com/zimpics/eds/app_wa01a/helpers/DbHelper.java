@@ -32,17 +32,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.sql.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Properties;
+import java.util.*;
+import java.util.regex.Pattern;
+
 
 //This is a singleton class
 public class DbHelper {
+    // private static DataFormatter formatter = new DataFormatter();
+   // private static boolean isDuplicate;
 
+ /*   public static void setIsDuplicate(boolean newValue) {
+        isDuplicate = newValue;
+    }
+*/
     private static final Logger LOGGER = LoggerFactory.getLogger(DbHelper.class);
     //the datasource is the only field of this class!!
     private BasicDataSource ds;
@@ -92,6 +97,7 @@ public class DbHelper {
         DbHelper.LOGGER.debug("Creating the data source");
         ds = new BasicDataSource();
         ds.setDriverClassName("org.sqlite.JDBC");
+        ds.setMaxTotal(50);
 
         //first make sure the directory exists to hold the database and data,
         // and while you're at it ... the final report files!
@@ -113,7 +119,7 @@ public class DbHelper {
 
         //Set datasource properties ... hardcoded SQLite
         ds.setUrl("jdbc:sqlite:" + properties.getProperty("db.dataPath") + "/" + properties.getProperty("db.name"));
-        ds.setUsername("'" + properties.get("db.username") + "'");
+        ds.setUsername("'" + properties.getProperty("db.username") + "'");
         ds.setPassword("'" + properties.getProperty("db.password" + "'"));
 
         //Flyway put here as it needs to be the very first thing that runs after
@@ -131,6 +137,7 @@ public class DbHelper {
         }
     }
 
+    //CONNECTION UTILITIES
     public void registerShutdownHook() {
         //This takes away the responsibility of closing threads properly
         //so whenever the JVM shuts down it will always close the datasource.
@@ -147,89 +154,95 @@ public class DbHelper {
     }
 
 
-    //Utitity Database METHODS
-    public static void deleteCalls(String fileLocation) {
-        String sql = "DELETE FROM tblCall ";
-        sql += "WHERE EXISTS ";
-        sql += "(SELECT call_id ";
-        sql += "FROM tblMeta ";
-        sql += "WHERE tblMeta.call_id = tblCall.call_id ";
-        sql += "AND tblMeta.xls_file = ?)";
-
-        try (Connection conn = DbHelper.getConnection(); PreparedStatement psSel = conn.prepareStatement(sql)) {
-            psSel.setString(1, fileLocation);
-            psSel.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-    }
-
-    public static void deleteMeta(String fileLocation) {
-        String sql = "DELETE FROM tblMeta ";
-        sql += "WHERE xls_file = ?";
-        try (Connection conn = DbHelper.getConnection(); PreparedStatement psSel = conn.prepareStatement(sql)) {
-            psSel.setString(1, fileLocation);
-            psSel.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-
-    }
-
-    public static void resetData(String file)  {
-        //sql for clearing this file's previous anomlies from the database
-        //each run through Validation for a particular file starts afresh.
-
-        String sqlDel = "DELETE FROM tblAnomalies ";
-        sqlDel += "WHERE file_name = ?";
-
-        //sql for resetting the file statistics .. except for 'times_run'
+    //DATABASE UTILITIES
+    private static boolean resetFileStats(String file) {
         String sqlUpd = "UPDATE tblFile ";
         sqlUpd += "SET date_processed = ?, ";
         sqlUpd += "file_status = ?, ";
         sqlUpd += "enquiries = ?, ";
         sqlUpd += "calls = ? ";
         sqlUpd += "WHERE file_name = ?";
-
-        //Perform the transaction with try with resources
         try (Connection conn = DbHelper.getConnection();
-             PreparedStatement psDel = conn.prepareStatement(sqlDel);
              PreparedStatement psUpd = conn.prepareStatement(sqlUpd)) {
-
-            //set auto-commit to false
-            conn.setAutoCommit(false);
-
-            //1. remove previous anomalies for this file
-            psDel.setString(1, file);
-            int rowsDeleted = psDel.executeUpdate();
-            if (rowsDeleted == 0) {
-                conn.rollback();
-                DbHelper.LOGGER.error("Failed to clear the anomalies for " + file + ". Rolling back the transaction.");
-            }
-
-            //2. reset file statistics
             psUpd.setString(1, "");
             psUpd.setString(2, "INVALID");
             psUpd.setInt(3, 0);
             psUpd.setInt(4, 0);
             psUpd.setString(5, file);
-            int rowsAffected = psUpd.executeUpdate();
-            if (rowsAffected == 0) {
-                conn.rollback();
-                DbHelper.LOGGER.error("Failed to reset the counters for " + file + ". Rolling back the transaction.");
-            }
-            //commit both operations
-            conn.commit();
-
+            psUpd.executeUpdate();
         } catch (SQLException e1) {
             System.out.println(e1.getMessage());
-            DbHelper.LOGGER.error("Failed to perform the transaction on tblAnomalies for " + file);
+            DbHelper.LOGGER.error("Failed to update file statistics for " + file);
+            return false;
         }
-
+        return true;
     }
 
+    private static boolean resetAnomalies(String file) {
+        String sqlDel = "DELETE FROM tblAnomalies ";
+        sqlDel += "WHERE file_name = ?";
+        try (Connection conn = DbHelper.getConnection();
+             PreparedStatement psDel = conn.prepareStatement(sqlDel)) {
+            psDel.setString(1, file);
+            psDel.executeUpdate();
+        } catch (SQLException e1) {
+            System.out.println(e1.getMessage());
+            DbHelper.LOGGER.error("Failed to perform delete anomalies for " + file);
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean resetCalls(String file) {
+        String sqlDel = "DELETE FROM tblCall ";
+        sqlDel += "WHERE call_id IN ";
+        sqlDel += "(SELECT c.call_id FROM ";
+        sqlDel += "tblCall c INNER JOIN ";
+        sqlDel += "tblMeta m ON c.call_id = m.call_id ";
+        sqlDel += "WHERE file_name = ?)";
+        try (Connection conn = DbHelper.getConnection();
+             PreparedStatement psDel = conn.prepareStatement(sqlDel)) {
+            psDel.setString(1, file);
+            psDel.executeUpdate();
+        } catch (SQLException e1) {
+            System.out.println(e1.getMessage());
+            DbHelper.LOGGER.error("Failed to perform delete calls on tblCall for " + file);
+            return false;
+        }
+        return true;
+    }
+
+    public static boolean resetData(String file, int i) {
+        if (i == 1) {
+            //VDate is calling
+            if (!resetAnomalies(file)) {
+                return false;
+            }
+        } else {
+            //ULoad is calling
+            if (!resetCalls(file)) {
+                return false;
+            }
+        }
+        return resetFileStats(file);
+    }
+
+    public static String checkFileStatus(String file) throws SQLException {
+        String sql = "SELECT file_status ";
+        sql += "FROM tblFile ";
+        sql += "WHERE file_name = " + "'" + file + "'";
+        try (Connection conn = DbHelper.getConnection(); Statement stmnt = conn.createStatement()) {
+            try (ResultSet rs = stmnt.executeQuery(sql)) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        }
+        return "No Status";
+    }
+
+
+    //DATE UTILITIES
     public static String makeDateReport(String fromDb) {
         SimpleDateFormat inFormat = new SimpleDateFormat("yyyy-MM-dd");
         SimpleDateFormat outFormat = new SimpleDateFormat("dd-MMM-yy");
@@ -242,11 +255,7 @@ public class DbHelper {
     }
 
     public static String makeDateSQLite(String fromXls) {
-        //  fromXls = ("0000000000" + fromXls).substring(fromXls.length());
-
-        //SimpleDateFormat inFormat = new SimpleDateFormat("dd/MM/yyyy");
-        //SimpleDateFormat outFormat = new SimpleDateFormat("yyyy-MM-dd");
-        SimpleDateFormat inFormat = new SimpleDateFormat("dd-MMM-yy");
+        SimpleDateFormat inFormat = new SimpleDateFormat(getDatePattern(fromXls));
         SimpleDateFormat outFormat = new SimpleDateFormat("yyyy-MM-dd");
         try {
             return outFormat.format(inFormat.parse(fromXls));
@@ -254,6 +263,175 @@ public class DbHelper {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private static boolean is31DayMonth(int m) {
+        Set<Integer> grp = new HashSet<>();
+        grp.add(1);
+        grp.add(3);
+        grp.add(5);
+        grp.add(7);
+        grp.add(8);
+        grp.add(10);
+        grp.add(12);
+        return grp.contains(m);
+    }
+
+    private static boolean is31DayMonth(String m) {
+        Set<String> grp = new HashSet<>();
+        grp.add("Jan");
+        grp.add("Mar");
+        grp.add("May");
+        grp.add("Jul");
+        grp.add("Aug");
+        grp.add("Oct");
+        grp.add("Dec");
+        return grp.contains(m);
+    }
+
+    private static boolean is30DayMonth(int m) {
+        Set<Integer> grp = new HashSet<>();
+        grp.add(9);
+        grp.add(4);
+        grp.add(6);
+        grp.add(11);
+        return grp.contains(m);
+    }
+
+    private static boolean is30DayMonth(String m) {
+        Set<String> grp = new HashSet<>();
+        grp.add("Sep");
+        grp.add("Apr");
+        grp.add("Jun");
+        grp.add("Nov");
+        return grp.contains(m);
+    }
+
+    private static boolean is29DayMonth(int m) {
+        Set<Integer> grp = new HashSet<>();
+        grp.add(2);
+        return grp.contains(m);
+    }
+
+    private static boolean is29DayMonth(String m) {
+        Set<String> grp = new HashSet<>();
+        grp.add("Feb");
+        return grp.contains(m);
+    }
+
+    public static String getDatePattern(String dt) {
+        //This app will only accept two different date patterns
+        //Patterns outside of this will be rejected
+        // REGEX PATTERN #1:  [\d\d\/\d\d\/\d\d\d\d]  .. matches '18/12/1948' pattern
+        // REGEX PATTERN #2:  [\d\d\-\w\w\w\-\d\d]    .. matches '18-Dec-48' pattern
+        // HOWEVER, the REGEX PATTERN #3: [\d\/\d\d\/\d\d\d\d]  .. matches '8/12/1948' pattern is missing
+        // the leading zero ... so it is supplied here!
+
+        Pattern p1 = Pattern.compile("\\d\\d/\\d\\d/\\d\\d\\d\\d");
+        Pattern p2 = Pattern.compile("\\d/\\d\\d/\\d\\d\\d\\d");
+        Pattern p3 = Pattern.compile("\\d\\d-\\w\\w\\w-\\d\\d");
+
+        if (p2.matcher(dt).matches()) {
+            dt = "0" + dt;
+        }
+
+        //if the dt string presented matche the first patterh
+        //validate that the values of the structre
+        if (p1.matcher(dt).matches()) {
+            int uno = Integer.parseInt(dt.substring(0, 2)); //gets the number of the day
+            int due = Integer.parseInt(dt.substring(3, 5)); //gets the number of the month
+            int tre = Integer.parseInt(dt.substring(6)); //gets the number of the year
+
+            // if second place (month) not between 1 and 12 => false
+            if (due > 0 && due < 13) {
+                // if second place (month) in (2)? ..
+                // then if first place (day) not between 1 and 29 => false
+                if (is29DayMonth(due)) {
+                    // if first place (day) > 29 => false
+                    if (uno > 0 && uno < 30) {
+                        // third place (year) is greater then this year => false
+                        int yr = Calendar.getInstance().get(Calendar.YEAR);
+                        if (tre <= yr) {
+                            //Both date and pattern validated!! Return the pattern
+                            return "dd/mm/yyyy";
+                        }
+                    }
+                }
+                if (is30DayMonth(due)) {
+                    // if first place (day) > 30 => false
+                    if (uno > 0 && uno < 31) {
+                        // third place (year) is greater then this year => false
+                        int yr = Calendar.getInstance().get(Calendar.YEAR);
+                        if (tre <= yr) {
+                            //Both date and pattern validated!! Return the pattern
+                            return "dd/mm/yyyy";
+                        }
+                    }
+                }
+                // else, if second place (month) in (1,3,5,7,8,10,12)? ..
+                // then if first place (day) not between 1 and 31 => false
+                if (is31DayMonth(due)) {
+                    // if first place (day) > 31 => false
+                    if (uno > 0 && uno < 32) {
+                        int yr = Calendar.getInstance().get(Calendar.YEAR);
+                        if (tre <= yr) {
+                            //Both date and pattern validated!! Return the pattern
+                            return "dd/mm/yyyy";
+                        }
+                    }
+                }
+            }
+        } else if (p3.matcher(dt).matches()) {
+            int uno = Integer.parseInt(dt.substring(0, 2)); //gets the number of the day
+            String due = dt.substring(3, 6); //gets the three character string of the month
+            int tre = Integer.parseInt(dt.substring(7)); //gets last two digits of the number of the year
+            // if second place (month) in (Feb)? ..
+            // then if first place (day) not between 1 and 29 => false
+            if (is29DayMonth(due)) {
+                // if first place (day) > 29 => false
+                if (uno > 0 && uno < 30) {
+                    // third place (year) is greater then this year => false
+                    int yr = Calendar.getInstance().get(Calendar.YEAR);
+                    //Hardcoded two digit year takes only years after 2000
+                    if (tre <= yr - 2000) {
+                        //Both date and pattern validated!! Return the pattern
+                        return "dd-MMM-yy";
+                    }
+                }
+            }
+
+            //if (isValid3DayMonthString(due)) {
+            //if second place month is a 30 day month ..
+            // then if first place (day) > 30 => false
+            if (is30DayMonth(due)) {
+                // if first place (day) > 30 => false
+                if (uno > 0 && uno < 31) {
+                    // third place (year) is greater then this year => false
+                    int yr = Calendar.getInstance().get(Calendar.YEAR);
+                    //Hardcoded two digit year takes only years after 2000
+                    if (tre <= yr - 2000) {
+                        //Both date and pattern validated!! Return the pattern
+                        return "dd-MMM-yy";
+                    }
+                }
+            }
+
+            // else, if second place (month) is a 31 day month ..
+            // then if first place (day) not between 1 and 31 => false
+            if (is31DayMonth(due)) {
+                // if first place (day) > 31 => false
+                if (uno > 0 && uno < 32) {
+                    int yr = Calendar.getInstance().get(Calendar.YEAR);
+                    //Hardcoded two digit year takes only years after 2000
+                    if (tre <= yr - 2000) {
+                        //Both date and pattern validated!! Return the pattern
+                        return "dd-MMM-yy";
+                    }
+                }
+            }
+
+        }
+        return "Invalid";
     }
 
     public static String myDateStamp() {
@@ -270,5 +448,7 @@ public class DbHelper {
 
     }
 
+
 }
+
 

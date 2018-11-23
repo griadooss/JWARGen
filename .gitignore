@@ -36,7 +36,9 @@ hs_err_pid*
 out
 images/*
 target/*
-src/main/resources/*
+#src/main/resources/*
+data/*
+reports/*
 
 #UML
 *.plantuml

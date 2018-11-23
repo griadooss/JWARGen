@@ -1,4 +1,9 @@
 package com.zimpics.eds.app_wa01a;
+//TODO: This method crashes (runs out of HEAP memeory) under Win10 with 32bit JVM installed
+//Installing 64bit JVM solves the issue
+//At this link there are suggestions how to solve the issue without having to
+//install 64bit java
+//https://stackoverflow.com/questions/6069847/java-lang-outofmemoryerror-java-heap-space-while-reading-excel-with-apache-poi
 
 import com.zimpics.eds.app_wa01a.helpers.DbHelper;
 import com.zimpics.eds.app_wa01a.helpers.TPAnomalyHelper;
@@ -16,7 +21,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.Properties;
 
-class VDate {
+public class VDate {
 
     //FIELDS
     private static boolean inCall = false;
@@ -40,12 +45,6 @@ class VDate {
 
         private FieldAttribute() {
             setCallProps();
-        }
-
-        public static final Logger LOGGER = LoggerFactory.getLogger(VDate.class);
-
-        private String[] getCallProps() {
-            return callProps;
         }
 
         private void setCallProps() {
@@ -88,7 +87,7 @@ class VDate {
                         return false;
                     }
                 }
-            } //means processing is NOT inside a call  .. disregard all attributes in this domain
+            }
 
             return true;
         }
@@ -104,11 +103,12 @@ class VDate {
             return workbook.getSheetAt(0);
         } catch (IOException e) {
             VDate.LOGGER.error("An error has occurred reading the file: ProcessSheet:readFile");
-           // e.printStackTrace();
+            // e.printStackTrace();
         }
         return null;
     }
 
+    // START of main VALIDATE method
     public static void validate(TPFile inputXLS) throws SQLException {
         Properties properties = new Properties();
         properties.put("db.path", "data");
@@ -118,11 +118,10 @@ class VDate {
 
         boolean initialLoad = inputXLS.chkIsInitalLoad(inFName);
         if (!initialLoad) {
-            DbHelper.resetData(inFName);
-            inputXLS.setEnquiries(0);
-            inputXLS.setCalls(0);
-            inputXLS.setfStatus("inValid");
-            inputXLS.setDtProcessed("");
+            if (!DbHelper.resetData(inFName, 1)) {
+                return;
+            }
+            inputXLS.resetFields();
         }
 
         XSSFSheet sheetToValidate = readFile("./" + properties.getProperty("db.path") + "/" + inFName);
@@ -155,7 +154,7 @@ class VDate {
 
                 if (s0.length() > 0) {
                     //Check against CLIENT ID in tblClient in database
-                    String rtn = WAClient.isValidClient(s0, rowNum);
+                    String rtn = WAClient.isValidClient(s0);
                     if (rtn.length() > 0) {
 
                         //set flags accordingly
@@ -208,7 +207,7 @@ class VDate {
                                 } catch (Exception e) {
                                     System.out.println(e.getMessage());
                                     VDate.LOGGER.error(e.getMessage());
-                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "ERROR", "Missing Call Id");
+                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Missing Call Id");
                                 }
                             }
                             break;
@@ -221,7 +220,17 @@ class VDate {
                                 } catch (Exception e) {
                                     System.out.println(e.getMessage());
                                     VDate.LOGGER.error((e.getMessage()));
-                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "ERROR", "Missing Open Date");
+                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Missing Open Date");
+                                }
+                            }
+                            if (DbHelper.getDatePattern(s7).equals("Invalid")) {
+                                missingData = true;
+                                try {
+                                    throw (new Exception("Invalid date format: Row number " + rowNum + " Col No: 7"));
+                                } catch (Exception e) {
+                                    System.out.println(e.getMessage());
+                                    VDate.LOGGER.error(e.getMessage());
+                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Invalid opening date format");
                                 }
                             }
                             if (s19.length() == 0) {
@@ -244,7 +253,17 @@ class VDate {
                                 } catch (Exception e) {
                                     System.out.println(e.getMessage());
                                     VDate.LOGGER.error(e.getMessage());
-                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "ERROR", "Open call");
+                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Call not closed");
+                                }
+                            }
+                            if (DbHelper.getDatePattern(s7).equals("Invalid")) {
+                                missingData = true;
+                                try {
+                                    throw (new Exception("Invalid date format: Row number " + rowNum + " Col No: 7"));
+                                } catch (Exception e) {
+                                    System.out.println(e.getMessage());
+                                    VDate.LOGGER.error(e.getMessage());
+                                    TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Invalid closing data format");
                                 }
                             }
                             break;
@@ -259,6 +278,18 @@ class VDate {
                                         System.out.println(e.getMessage());
                                         VDate.LOGGER.warn(e.getMessage());
                                         TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "WARN", "Missing Call duration");
+                                    }
+                                }
+                            }
+                            if (!s7.matches("\\S+")) {
+                                missingData = true;
+                                {
+                                    try {
+                                        throw (new Exception("Invalid Call Time format: Row number " + rowNum + " Col No: 7"));
+                                    } catch (Exception e) {
+                                        System.out.println(e.getMessage());
+                                        VDate.LOGGER.warn(e.getMessage());
+                                        TPAnomalyHelper.createAnomaly(inFName, rowNum, 7, s0, "FATAL", "Invalid Call Time format");
                                     }
                                 }
                             }
@@ -331,7 +362,8 @@ class VDate {
 
         try {
             inputXLS.save();
-        } catch (SQLException e) {
+        } catch (
+                SQLException e) {
             e.printStackTrace();
         }
     }
