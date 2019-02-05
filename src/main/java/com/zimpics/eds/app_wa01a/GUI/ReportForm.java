@@ -406,8 +406,10 @@ public class ReportForm extends JFrame {
         // get quarter
         int presentQuarter = now.get(IsoFields.QUARTER_OF_YEAR);
         // year for last quarter
-        int presentYear = now.minus(1, IsoFields.QUARTER_YEARS).getYear();
+        //int presentYear = now.minus(1, IsoFields.QUARTER_YEARS).getYear();
+        int presentYear = now.minus(0, IsoFields.QUARTER_YEARS).getYear();
         // last quarter
+
         int lastQuarter;
         int lastQuarterYear;
         //adjust for when last quarter is last year
