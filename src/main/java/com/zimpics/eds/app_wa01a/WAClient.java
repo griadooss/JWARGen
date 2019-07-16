@@ -45,17 +45,19 @@ public class WAClient {
 
     private static void loadFromPropertiesFile() {
         //Default values for tblClient .. say client.properties is missing!!
+        props.setProperty("ACA", "Australian Chiropractors Association");
         props.setProperty("ADAINC", "Australian Dental Association Inc");
-        props.setProperty("AVA", "The Australian Veterinary Assoc Ltd");
         props.setProperty("AIA", "Australian Institute of Architects");
+        props.setProperty("AOA", "Osteopathic Australian");
         props.setProperty("APA", "Australian Physiotherapy Association");
-        props.setProperty("AOA", "Australian Osteopathic Association");
-        props.setProperty("APODA", "Australian Podiatry Association (NSW)");
+        props.setProperty("APODA", "Australian Podiatry Association");
         props.setProperty("APODAV", "Australian Podiatry Association (VIC)");
-        props.setProperty("CAA", "Chiropractors Association of Australia");
-        props.setProperty("PIAA", "Pet Industry Association of Australia");
+        props.setProperty("AVA", "The Australian Veterinary Assoc Ltd");
+        props.setProperty("CAA", "Australian Chiropractors Association");
+        props.setProperty("EDS", "Emu Data Services");
+        props.setProperty("OA", "Osteopathic Australian");
+        props.setProperty("PIAA", "Printing Industries Association of Australia");
         props.setProperty("VNCA", "Veterinary Nurses Council of Australia");
-        props.setProperty("OA", "Optometry Australia");
         try {
             props.load(WAClient.class.getResourceAsStream("/client.properties"));
         } catch (final IOException e) {
